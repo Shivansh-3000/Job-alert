@@ -17,31 +17,6 @@ CHAT_ID        = os.environ.get("CHAT_ID")
 
 SEEN_FILE = "seen_jobs.json"
 
-# ---------------------------------------------------------------
-# TITLE_KEYWORDS  → matched against job TITLE only (precise)
-# DESC_KEYWORDS   → matched against title + description (broader)
-# ---------------------------------------------------------------
-TITLE_KEYWORDS = [
-    ".net", "c#", "asp.net", ".net core", "dot net",
-    "edi", "electronic data interchange",
-    "dotnet", "csharp",
-]
-
-DESC_KEYWORDS = [
-    "asp.net", ".net core", "c# developer", "dotnet developer",
-    "electronic data interchange", "edi developer",
-    "dot net developer",
-]
-
-EXPERIENCE_PATTERNS = [
-    r"0\s*[-–]\s*[123]\s*years?",
-    r"1\s*[-–]\s*[23]\s*years?",
-    r"1\s*to\s*[23]\s*years?",
-    r"fresher", r"entry[\s-]level", r"junior",
-    r"0\s*[-–]\s*1\s*years?",
-    r"\b1\s*year\b", r"\b2\s*years?\b",
-]
-
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -52,25 +27,177 @@ HEADERS = {
 }
 
 # ================================================================ #
-#   TITLE match — precise, used for all sources                    #
+#  MATCHING LOGIC                                                   #
 # ================================================================ #
-def title_match(title: str) -> bool:
-    t = title.lower()
-    return any(k in t for k in TITLE_KEYWORDS)
 
-# ================================================================ #
-#   DESC match — only for multi-word specific phrases              #
-# ================================================================ #
-def desc_match(text: str) -> bool:
+# These patterns use word boundaries (\b) so ".net" won't match
+# inside words like "internet", "planet", "magnet" etc.
+SKILL_PATTERNS = [
+    r"\b\.net\b",
+    r"\bc#\b",
+    r"\basp\.net\b",
+    r"\b\.net\s*core\b",
+    r"\bdot\s*net\b",
+    r"\bdotnet\b",
+    r"\bcsharp\b",
+    r"\bedi\b",
+    r"\belectronic\s+data\s+interchange\b",
+]
+
+# Job must contain at least one of these role words in the TITLE
+# This prevents "Credit Analyst" or "Social Media Manager" from passing
+ROLE_KEYWORDS = [
+    "developer", "engineer", "sde", "swe",
+    "software", "backend", "fullstack", "full stack",
+    "full-stack", "frontend", "architect", "programmer",
+    "technical", "tech lead", "development",
+]
+
+# Experience patterns — matches 0-2.5 year range descriptions
+EXPERIENCE_PATTERNS = [
+    r"\b0\s*[-–to]+\s*[123]\s*years?\b",
+    r"\b1\s*[-–to]+\s*[23]\s*years?\b",
+    r"\b1\s*[-–to]+\s*2\.5\s*years?\b",
+    r"\b0\s*[-–to]+\s*2\.5\s*years?\b",
+    r"\bfresher\b",
+    r"\bentry[\s-]level\b",
+    r"\bjunior\b",
+    r"\b0[\s-]+1\s*years?\b",
+    r"\b1\s*year\b",
+    r"\b2\s*years?\b",
+]
+
+# Seniority words that indicate too much experience — skip these
+SENIOR_BLOCKLIST = [
+    r"\bstaff\b", r"\bprincipal\b", r"\bdirector\b",
+    r"\bvp\b", r"\bvice\s+president\b", r"\bhead\s+of\b",
+    r"\blead\b", r"\bsenior\b", r"\bsr\.\b", r"\bsr\b",
+    r"\b[5-9]\+?\s*years?\b", r"\b1[0-9]\+?\s*years?\b",
+]
+
+
+def skill_match(text: str) -> bool:
+    """Returns True if any .NET/C#/EDI skill keyword is found."""
     t = text.lower()
-    return any(k in t for k in DESC_KEYWORDS)
+    return any(re.search(p, t) for p in SKILL_PATTERNS)
+
+
+def role_match(title: str) -> bool:
+    """Returns True only if the job title is a developer/engineer role."""
+    t = title.lower()
+    return any(k in t for k in ROLE_KEYWORDS)
+
 
 def experience_match(text: str) -> bool:
+    """Returns True if the description mentions 0-2.5 years experience."""
     t = text.lower()
     return any(re.search(p, t) for p in EXPERIENCE_PATTERNS)
 
+
+def not_too_senior(title: str) -> bool:
+    """Returns True if the title does NOT contain senior/lead/staff etc."""
+    t = title.lower()
+    return not any(re.search(p, t) for p in SENIOR_BLOCKLIST)
+
+
+def is_relevant(title: str, description: str = "") -> bool:
+    """
+    A job passes only if ALL of these are true:
+    1. Title contains a developer/engineer role word
+    2. Title or description contains a .NET/C#/EDI skill keyword
+    3. Title does NOT indicate senior/lead/staff level
+    4. Description mentions 0-2.5 years experience
+       (if no description available, skip this check)
+    """
+    if not role_match(title):
+        return False
+
+    if not skill_match(title + " " + description):
+        return False
+
+    if not not_too_senior(title):
+        return False
+
+    # Only apply experience filter if we have a description to check
+    if description.strip():
+        if not experience_match(description):
+            return False
+
+    return True
+
+
+# ================================================================ #
+#  COMPANY LISTS                                                    #
+# ================================================================ #
+
+GREENHOUSE_COMPANIES = [
+    # Indian product companies
+    ("Freshworks",   "freshworks"),
+    ("Postman",      "postman"),
+    ("Sprinklr",     "sprinklr"),
+    ("Innovaccer",   "innovaccer"),
+    ("Druva",        "druva"),
+    ("Icertis",      "icertis"),
+    ("PhonePe",      "phonepe"),
+    # Global product companies
+    ("Atlassian",    "atlassian"),
+    ("Stripe",       "stripe"),
+    ("Figma",        "figma"),
+    ("Notion",       "notion"),
+    ("Coinbase",     "coinbase"),
+    ("Discord",      "discord"),
+    ("Dropbox",      "dropbox"),
+    ("Zscaler",      "zscaler"),
+    ("CrowdStrike",  "crowdstrike"),
+    ("MongoDB",      "mongodb"),
+    ("Twilio",       "twilio"),
+    ("Datadog",      "datadoghq"),
+    ("Grammarly",    "grammarly"),
+    ("HashiCorp",    "hashicorp"),
+    ("Robinhood",    "robinhood"),
+    ("Canva",        "canva"),
+    ("Snap",         "snap"),
+    ("Lyft",         "lyft"),
+]
+
+LEVER_COMPANIES = [
+    # Indian product companies
+    ("Meesho",       "meesho"),
+    ("Mindtickle",   "mindtickle"),
+    ("CRED",         "cred"),
+    ("BrowserStack", "browserstack"),
+    ("Razorpay",     "razorpay"),
+    ("Chargebee",    "chargebee"),
+    ("CleverTap",    "clevertap"),
+    ("MoEngage",     "moengage"),
+    ("Whatfix",      "whatfix"),
+    ("Groww",        "groww"),
+    # Global product companies
+    ("Netflix",      "netflix"),
+    ("Reddit",       "reddit"),
+    ("Scale AI",     "scaleai"),
+    ("Airtable",     "airtable"),
+    ("Anduril",      "anduril"),
+]
+
+WORKDAY_COMPANIES = [
+    ("Visa",        "visa",        "Visa_Careers",            "1"),
+    ("Mastercard",  "mastercard",  "MCW_Careers",             "1"),
+    ("Walmart",     "walmart",     "WalmartExternalCareers",  "5"),
+    ("SAP",         "sap",         "SAP",                     "1"),
+    ("Adobe",       "adobe",       "ADBE_University_Hiring",  "1"),
+    ("PayPal",      "paypal",      "jobs",                    "1"),
+    ("Intuit",      "intuit",      "Intuit_Careers",          "1"),
+    ("ServiceNow",  "servicenow",  "External",                "1"),
+]
+
+# ================================================================ #
+#  UTILS                                                            #
+# ================================================================ #
+
 def strip_html(html: str) -> str:
     return BeautifulSoup(html, "html.parser").get_text(" ")
+
 
 def safe_get(url, headers=None, params=None, retries=2, delay=3):
     for attempt in range(retries):
@@ -87,84 +214,12 @@ def safe_get(url, headers=None, params=None, retries=2, delay=3):
     return None
 
 # ================================================================ #
-#   COMPANY LISTS — verified board IDs                             #
-# ================================================================ #
-
-# ── Greenhouse ───────────────────────────────────────────────────
-# Format: (Display Name, greenhouse_board_id)
-GREENHOUSE_COMPANIES = [
-    # Indian product companies
-    ("Freshworks",      "freshworks"),
-    ("Postman",         "postman"),
-    ("Sprinklr",        "sprinklr"),
-    ("Innovaccer",      "innovaccer"),
-    ("Druva",           "druva"),
-    ("Icertis",         "icertis"),
-    ("PhonePe",         "phonepe"),
-    # Global product companies
-    ("Atlassian",       "atlassian"),
-    ("Stripe",          "stripe"),
-    ("Figma",           "figma"),
-    ("Notion",          "notion"),
-    ("Coinbase",        "coinbase"),
-    ("Discord",         "discord"),
-    ("Dropbox",         "dropbox"),
-    ("Zscaler",         "zscaler"),
-    ("CrowdStrike",     "crowdstrike"),
-    ("MongoDB",         "mongodb"),
-    ("Twilio",          "twilio"),
-    ("Datadog",         "datadoghq"),
-    ("Grammarly",       "grammarly"),
-    ("HashiCorp",       "hashicorp"),
-    ("Robinhood",       "robinhood"),
-    ("Canva",           "canva"),
-    ("Snap",            "snap"),
-    ("Lyft",            "lyft"),
-]
-
-# ── Lever ────────────────────────────────────────────────────────
-# Format: (Display Name, lever_board_id)
-LEVER_COMPANIES = [
-    # Indian product companies
-    ("Meesho",          "meesho"),
-    ("Mindtickle",      "mindtickle"),
-    ("CRED",            "cred"),
-    ("BrowserStack",    "browserstack"),
-    ("Razorpay",        "razorpay"),
-    ("Chargebee",       "chargebee"),
-    ("CleverTap",       "clevertap"),
-    ("MoEngage",        "moengage"),
-    ("Whatfix",         "whatfix"),
-    ("Groww",           "groww"),
-    # Global product companies
-    ("Netflix",         "netflix"),
-    ("Reddit",          "reddit"),
-    ("Scale AI",        "scaleai"),
-    ("Airtable",        "airtable"),
-    ("Anduril",         "anduril"),
-]
-
-# ── Workday ──────────────────────────────────────────────────────
-# Format: (Display Name, tenant, board_id, wd_version)
-WORKDAY_COMPANIES = [
-    ("Visa",            "visa",         "Visa_Careers",             "1"),
-    ("Mastercard",      "mastercard",   "MCW_Careers",              "1"),
-    ("Walmart",         "walmart",      "WalmartExternalCareers",   "5"),
-    ("SAP",             "sap",          "SAP",                      "1"),
-    ("Adobe",           "adobe",        "ADBE_University_Hiring",   "1"),
-    ("PayPal",          "paypal",       "jobs",                     "1"),
-    ("Intuit",          "intuit",       "Intuit_Careers",           "1"),
-    ("Salesforce",      "salesforce",   "External_Career_Site",     "2"),
-    ("ServiceNow",      "servicenow",   "External",                 "1"),
-]
-
-# ================================================================ #
-#   ALERTS                                                         #
+#  ALERTS                                                           #
 # ================================================================ #
 
 def send_email(subject: str, body: str):
     if not EMAIL or not APP_PASSWORD:
-        print("  ⚠️  Email credentials missing — skipping.")
+        print("  ⚠️  Email credentials missing.")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -181,9 +236,10 @@ def send_email(subject: str, body: str):
     except Exception as e:
         print(f"  ❌ Email failed: {e}")
 
+
 def send_telegram(message: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("  ⚠️  Telegram credentials missing — skipping.")
+        print("  ⚠️  Telegram credentials missing.")
         return
     try:
         url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -200,7 +256,7 @@ def send_telegram(message: str):
         print(f"  ❌ Telegram exception: {e}")
 
 # ================================================================ #
-#   STORAGE                                                        #
+#  STORAGE                                                          #
 # ================================================================ #
 
 def load_seen() -> list:
@@ -212,24 +268,25 @@ def load_seen() -> list:
             return []
     return []
 
+
 def save_seen(seen: list):
     try:
         with open(SEEN_FILE, "w") as f:
             json.dump(seen, f, indent=2)
     except IOError as e:
-        print(f"⚠️  Could not save seen file: {e}")
+        print(f"⚠️  Could not save: {e}")
 
 # ================================================================ #
-#   SCRAPERS                                                       #
+#  SCRAPERS                                                         #
 # ================================================================ #
 
 def scrape_greenhouse(company: str, board: str) -> list:
     jobs = []
-    url  = f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
-    res  = safe_get(url)
+    res  = safe_get(
+        f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
+    )
     if not res:
         return jobs
-
     try:
         data = res.json()
     except ValueError:
@@ -241,8 +298,7 @@ def scrape_greenhouse(company: str, board: str) -> list:
         location = job.get("location", {}).get("name", "")
         desc     = strip_html(job.get("content", ""))
 
-        # ✅ Title must match — prevents false positives like Postman
-        if title_match(title) or desc_match(desc):
+        if is_relevant(title, desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
@@ -257,11 +313,11 @@ def scrape_greenhouse(company: str, board: str) -> list:
 
 def scrape_lever(company: str, board: str) -> list:
     jobs = []
-    url  = f"https://api.lever.co/v0/postings/{board}?mode=json"
-    res  = safe_get(url)
+    res  = safe_get(
+        f"https://api.lever.co/v0/postings/{board}?mode=json"
+    )
     if not res:
         return jobs
-
     try:
         data = res.json()
     except ValueError:
@@ -275,7 +331,7 @@ def scrape_lever(company: str, board: str) -> list:
             strip_html(i.get("content", "")) for i in job.get("lists", [])
         ) + " " + strip_html(job.get("additional", ""))
 
-        if title_match(title) or desc_match(desc):
+        if is_relevant(title, desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
@@ -312,7 +368,8 @@ def scrape_workday(company: str, tenant: str, board: str, version: str) -> list:
                     f"/en-US/{board}{path}"
                 )
                 location = job.get("locationsText", "")
-                if title_match(title):
+                # No description available from Workday search — title only
+                if role_match(title) and skill_match(title) and not_too_senior(title):
                     jobs.append({
                         "company":  company,
                         "title":    title,
@@ -349,7 +406,9 @@ def scrape_amazon() -> list:
             job_id   = job.get("id_icims", "")
             link     = f"https://www.amazon.jobs/en/jobs/{job_id}"
             location = job.get("location", "")
-            if title_match(title):
+            desc     = job.get("description", "")
+
+            if is_relevant(title, desc):
                 jobs.append({
                     "company":  "Amazon",
                     "title":    title,
@@ -388,7 +447,7 @@ def scrape_remotive() -> list:
         loc     = job.get("candidate_required_location", "Remote")
         desc    = strip_html(job.get("description", ""))
 
-        if title_match(title) or desc_match(desc):
+        if is_relevant(title, desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
@@ -425,7 +484,7 @@ def scrape_arbeitnow() -> list:
             loc     = job.get("location", "")
             desc    = strip_html(job.get("description", ""))
 
-            if title_match(title) or desc_match(desc):
+            if is_relevant(title, desc):
                 jobs.append({
                     "company":  company,
                     "title":    title,
@@ -439,7 +498,7 @@ def scrape_arbeitnow() -> list:
     return jobs
 
 # ================================================================ #
-#   MAIN SCRAPER                                                   #
+#  MAIN SCRAPER                                                     #
 # ================================================================ #
 
 def scrape_all() -> list:
@@ -480,7 +539,7 @@ def scrape_all() -> list:
     return unique
 
 # ================================================================ #
-#   MESSAGE & MAIN                                                 #
+#  MESSAGE & MAIN                                                   #
 # ================================================================ #
 
 def build_message(job: dict) -> str:
