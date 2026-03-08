@@ -1,0 +1,12 @@
+[]
+```
+4. Click **Commit changes** → **Commit changes**
+
+---
+
+## Step 4 — Create the workflow file
+
+1. Click **Add file** → **Create new file**
+2. In the filename box type exactly (including the slashes):
+```
+.github/workflows/scraper.yml
