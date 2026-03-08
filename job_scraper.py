@@ -30,8 +30,8 @@ HEADERS = {
 #  MATCHING LOGIC                                                   #
 # ================================================================ #
 
-# These patterns use word boundaries (\b) so ".net" won't match
-# inside words like "internet", "planet", "magnet" etc.
+# Word boundary patterns — prevents ".net" matching inside
+# "internet", "magnet", "planet" etc.
 SKILL_PATTERNS = [
     r"\b\.net\b",
     r"\bc#\b",
@@ -44,8 +44,8 @@ SKILL_PATTERNS = [
     r"\belectronic\s+data\s+interchange\b",
 ]
 
-# Job must contain at least one of these role words in the TITLE
-# This prevents "Credit Analyst" or "Social Media Manager" from passing
+# Job title must contain at least one of these — prevents non-tech
+# roles like "Credit Analyst" or "Social Media Manager" from passing
 ROLE_KEYWORDS = [
     "developer", "engineer", "sde", "swe",
     "software", "backend", "fullstack", "full stack",
@@ -53,49 +53,34 @@ ROLE_KEYWORDS = [
     "technical", "tech lead", "development",
 ]
 
-# Experience patterns — matches 0-2.5 year range descriptions
-EXPERIENCE_PATTERNS = [
-    r"\b0\s*[-–to]+\s*[123]\s*years?\b",
-    r"\b1\s*[-–to]+\s*[23]\s*years?\b",
-    r"\b1\s*[-–to]+\s*2\.5\s*years?\b",
-    r"\b0\s*[-–to]+\s*2\.5\s*years?\b",
-    r"\bfresher\b",
-    r"\bentry[\s-]level\b",
-    r"\bjunior\b",
-    r"\b0[\s-]+1\s*years?\b",
-    r"\b1\s*year\b",
-    r"\b2\s*years?\b",
-]
-
-# Seniority words that indicate too much experience — skip these
+# Titles containing these words are skipped — too senior for 1-2 yr exp
 SENIOR_BLOCKLIST = [
-    r"\bstaff\b", r"\bprincipal\b", r"\bdirector\b",
-    r"\bvp\b", r"\bvice\s+president\b", r"\bhead\s+of\b",
-    r"\blead\b", r"\bsenior\b", r"\bsr\.\b", r"\bsr\b",
-    r"\b[5-9]\+?\s*years?\b", r"\b1[0-9]\+?\s*years?\b",
+    r"\bstaff\b",
+    r"\bprincipal\b",
+    r"\bdirector\b",
+    r"\bvp\b",
+    r"\bvice\s+president\b",
+    r"\bhead\s+of\b",
+    r"\blead\b",
+    r"\bsenior\b",
+    r"\bsr\.\b",
+    r"\bsr\b",
+    r"\b[5-9]\+?\s*years?\b",
+    r"\b1[0-9]\+?\s*years?\b",
 ]
 
 
 def skill_match(text: str) -> bool:
-    """Returns True if any .NET/C#/EDI skill keyword is found."""
     t = text.lower()
     return any(re.search(p, t) for p in SKILL_PATTERNS)
 
 
 def role_match(title: str) -> bool:
-    """Returns True only if the job title is a developer/engineer role."""
     t = title.lower()
     return any(k in t for k in ROLE_KEYWORDS)
 
 
-def experience_match(text: str) -> bool:
-    """Returns True if the description mentions 0-2.5 years experience."""
-    t = text.lower()
-    return any(re.search(p, t) for p in EXPERIENCE_PATTERNS)
-
-
 def not_too_senior(title: str) -> bool:
-    """Returns True if the title does NOT contain senior/lead/staff etc."""
     t = title.lower()
     return not any(re.search(p, t) for p in SENIOR_BLOCKLIST)
 
@@ -104,10 +89,12 @@ def is_relevant(title: str, description: str = "") -> bool:
     """
     A job passes only if ALL of these are true:
     1. Title contains a developer/engineer role word
-    2. Title or description contains a .NET/C#/EDI skill keyword
-    3. Title does NOT indicate senior/lead/staff level
-    4. Description mentions 0-2.5 years experience
-       (if no description available, skip this check)
+    2. Title OR description contains a .NET/C#/EDI skill keyword
+    3. Title does NOT contain senior/lead/staff/director level words
+
+    NOTE: Experience filter intentionally removed — job descriptions
+    phrase experience requirements too inconsistently to filter reliably.
+    The seniority blocklist handles filtering out over-experienced roles.
     """
     if not role_match(title):
         return False
@@ -118,68 +105,44 @@ def is_relevant(title: str, description: str = "") -> bool:
     if not not_too_senior(title):
         return False
 
-    # Only apply experience filter if we have a description to check
-    if description.strip():
-        if not experience_match(description):
-            return False
-
     return True
 
 
 # ================================================================ #
-#  COMPANY LISTS                                                    #
+#  COMPANY LISTS — verified working board IDs only                 #
 # ================================================================ #
 
+# ── Greenhouse (verified ✅) ──────────────────────────────────────
 GREENHOUSE_COMPANIES = [
     # Indian product companies
-    ("Freshworks",   "freshworks"),
     ("Postman",      "postman"),
-    ("Sprinklr",     "sprinklr"),
-    ("Innovaccer",   "innovaccer"),
     ("Druva",        "druva"),
-    ("Icertis",      "icertis"),
     ("PhonePe",      "phonepe"),
     # Global product companies
-    ("Atlassian",    "atlassian"),
     ("Stripe",       "stripe"),
     ("Figma",        "figma"),
-    ("Notion",       "notion"),
     ("Coinbase",     "coinbase"),
     ("Discord",      "discord"),
     ("Dropbox",      "dropbox"),
     ("Zscaler",      "zscaler"),
-    ("CrowdStrike",  "crowdstrike"),
     ("MongoDB",      "mongodb"),
     ("Twilio",       "twilio"),
-    ("Datadog",      "datadoghq"),
     ("Grammarly",    "grammarly"),
-    ("HashiCorp",    "hashicorp"),
     ("Robinhood",    "robinhood"),
-    ("Canva",        "canva"),
-    ("Snap",         "snap"),
     ("Lyft",         "lyft"),
 ]
 
+# ── Lever (verified ✅) ───────────────────────────────────────────
 LEVER_COMPANIES = [
     # Indian product companies
     ("Meesho",       "meesho"),
     ("Mindtickle",   "mindtickle"),
     ("CRED",         "cred"),
-    ("BrowserStack", "browserstack"),
-    ("Razorpay",     "razorpay"),
-    ("Chargebee",    "chargebee"),
-    ("CleverTap",    "clevertap"),
-    ("MoEngage",     "moengage"),
-    ("Whatfix",      "whatfix"),
-    ("Groww",        "groww"),
     # Global product companies
     ("Netflix",      "netflix"),
-    ("Reddit",       "reddit"),
-    ("Scale AI",     "scaleai"),
-    ("Airtable",     "airtable"),
-    ("Anduril",      "anduril"),
 ]
 
+# ── Workday ───────────────────────────────────────────────────────
 WORKDAY_COMPANIES = [
     ("Visa",        "visa",        "Visa_Careers",            "1"),
     ("Mastercard",  "mastercard",  "MCW_Careers",             "1"),
@@ -368,7 +331,6 @@ def scrape_workday(company: str, tenant: str, board: str, version: str) -> list:
                     f"/en-US/{board}{path}"
                 )
                 location = job.get("locationsText", "")
-                # No description available from Workday search — title only
                 if role_match(title) and skill_match(title) and not_too_senior(title):
                     jobs.append({
                         "company":  company,
@@ -528,7 +490,7 @@ def scrape_all() -> list:
     print("\n🔍 Arbeitnow API...")
     all_jobs += scrape_arbeitnow()
 
-    # Global dedup
+    # Global dedup by link
     seen_links, unique = set(), []
     for job in all_jobs:
         if job["link"] and job["link"] not in seen_links:
