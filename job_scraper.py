@@ -10,29 +10,36 @@ from bs4 import BeautifulSoup
 
 # ================= CONFIG (FROM GITHUB SECRETS) ================= #
 
-EMAIL        = os.environ.get("gairolashivansh@gmail.com")
-APP_PASSWORD = os.environ.get("jyxigfjolfroxzpn")
-TELEGRAM_TOKEN = os.environ.get("8702304485:AAEu9VgrWtKvlq86v-x4RNZWUqG18wABU28")
-CHAT_ID      = os.environ.get("8702304485")
+EMAIL          = os.environ.get("EMAIL")
+APP_PASSWORD   = os.environ.get("APP_PASSWORD")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+CHAT_ID        = os.environ.get("CHAT_ID")
 
 SEEN_FILE = "seen_jobs.json"
 
-KEYWORDS = [
-    ".net", "c#", "asp.net",
-    ".net core", "dot net",
-    "edi", "electronic data interchange"
+# ---------------------------------------------------------------
+# TITLE_KEYWORDS  → matched against job TITLE only (precise)
+# DESC_KEYWORDS   → matched against title + description (broader)
+# ---------------------------------------------------------------
+TITLE_KEYWORDS = [
+    ".net", "c#", "asp.net", ".net core", "dot net",
+    "edi", "electronic data interchange",
+    "dotnet", "csharp",
+]
+
+DESC_KEYWORDS = [
+    "asp.net", ".net core", "c# developer", "dotnet developer",
+    "electronic data interchange", "edi developer",
+    "dot net developer",
 ]
 
 EXPERIENCE_PATTERNS = [
     r"0\s*[-–]\s*[123]\s*years?",
     r"1\s*[-–]\s*[23]\s*years?",
     r"1\s*to\s*[23]\s*years?",
-    r"fresher",
-    r"entry[\s-]level",
-    r"junior",
+    r"fresher", r"entry[\s-]level", r"junior",
     r"0\s*[-–]\s*1\s*years?",
-    r"\b1\s*year\b",
-    r"\b2\s*years?\b",
+    r"\b1\s*year\b", r"\b2\s*years?\b",
 ]
 
 HEADERS = {
@@ -42,66 +49,122 @@ HEADERS = {
         "Chrome/122.0.0.0 Safari/537.36"
     ),
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-# ================= GREENHOUSE COMPANIES ================= #
+# ================================================================ #
+#   TITLE match — precise, used for all sources                    #
+# ================================================================ #
+def title_match(title: str) -> bool:
+    t = title.lower()
+    return any(k in t for k in TITLE_KEYWORDS)
 
-GREENHOUSE_COMPANIES = [
-    ("Atlassian",    "atlassian"),
-    ("Freshworks",   "freshworks"),
-    ("Postman",      "postman"),
-    ("Razorpay",     "razorpay"),
-    ("Browserstack", "browserstack"),
-    ("Chargebee",    "chargebee"),
-    ("Hasura",       "hasura"),
-    ("Moengage",     "moengage"),
-    ("Whatfix",      "whatfix"),
-    ("Clevertap",    "clevertap"),
-    ("Visa", "visa"),
-    ("Mastercard",  "mastercard")
-]
-
-# ================= LEVER COMPANIES ================= #
-
-LEVER_COMPANIES = [
-    ("Meesho",        "meesho"),
-    ("Darwinbox",     "darwinbox"),
-    ("Unacademy",     "unacademy"),
-    ("slice",         "sliceit"),
-    ("Groww",         "groww"),
-    ("Sigmoid",       "sigmoid"),
-    ("Mindtickle",    "mindtickle"),
-]
-
-# ================= UTIL ================= #
-
-def keyword_match(text: str) -> bool:
-    text = text.lower()
-    return any(k in text for k in KEYWORDS)
+# ================================================================ #
+#   DESC match — only for multi-word specific phrases              #
+# ================================================================ #
+def desc_match(text: str) -> bool:
+    t = text.lower()
+    return any(k in t for k in DESC_KEYWORDS)
 
 def experience_match(text: str) -> bool:
-    text = text.lower()
-    return any(re.search(p, text) for p in EXPERIENCE_PATTERNS)
+    t = text.lower()
+    return any(re.search(p, t) for p in EXPERIENCE_PATTERNS)
 
-def safe_get(url: str, headers=None, retries=2, delay=3) -> requests.Response | None:
-    """GET with retry logic and timeout."""
+def strip_html(html: str) -> str:
+    return BeautifulSoup(html, "html.parser").get_text(" ")
+
+def safe_get(url, headers=None, params=None, retries=2, delay=3):
     for attempt in range(retries):
         try:
-            res = requests.get(url, headers=headers or {}, timeout=15)
+            res = requests.get(
+                url, headers=headers or {}, params=params, timeout=15
+            )
             res.raise_for_status()
             return res
         except requests.RequestException as e:
-            print(f"  [Attempt {attempt+1}] GET failed for {url}: {e}")
+            print(f"  [Attempt {attempt+1}] GET failed → {url}: {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
     return None
 
-# ================= ALERTS ================= #
+# ================================================================ #
+#   COMPANY LISTS — verified board IDs                             #
+# ================================================================ #
+
+# ── Greenhouse ───────────────────────────────────────────────────
+# Format: (Display Name, greenhouse_board_id)
+GREENHOUSE_COMPANIES = [
+    # Indian product companies
+    ("Freshworks",      "freshworks"),
+    ("Postman",         "postman"),
+    ("Sprinklr",        "sprinklr"),
+    ("Innovaccer",      "innovaccer"),
+    ("Druva",           "druva"),
+    ("Icertis",         "icertis"),
+    ("PhonePe",         "phonepe"),
+    # Global product companies
+    ("Atlassian",       "atlassian"),
+    ("Stripe",          "stripe"),
+    ("Figma",           "figma"),
+    ("Notion",          "notion"),
+    ("Coinbase",        "coinbase"),
+    ("Discord",         "discord"),
+    ("Dropbox",         "dropbox"),
+    ("Zscaler",         "zscaler"),
+    ("CrowdStrike",     "crowdstrike"),
+    ("MongoDB",         "mongodb"),
+    ("Twilio",          "twilio"),
+    ("Datadog",         "datadoghq"),
+    ("Grammarly",       "grammarly"),
+    ("HashiCorp",       "hashicorp"),
+    ("Robinhood",       "robinhood"),
+    ("Canva",           "canva"),
+    ("Snap",            "snap"),
+    ("Lyft",            "lyft"),
+]
+
+# ── Lever ────────────────────────────────────────────────────────
+# Format: (Display Name, lever_board_id)
+LEVER_COMPANIES = [
+    # Indian product companies
+    ("Meesho",          "meesho"),
+    ("Mindtickle",      "mindtickle"),
+    ("CRED",            "cred"),
+    ("BrowserStack",    "browserstack"),
+    ("Razorpay",        "razorpay"),
+    ("Chargebee",       "chargebee"),
+    ("CleverTap",       "clevertap"),
+    ("MoEngage",        "moengage"),
+    ("Whatfix",         "whatfix"),
+    ("Groww",           "groww"),
+    # Global product companies
+    ("Netflix",         "netflix"),
+    ("Reddit",          "reddit"),
+    ("Scale AI",        "scaleai"),
+    ("Airtable",        "airtable"),
+    ("Anduril",         "anduril"),
+]
+
+# ── Workday ──────────────────────────────────────────────────────
+# Format: (Display Name, tenant, board_id, wd_version)
+WORKDAY_COMPANIES = [
+    ("Visa",            "visa",         "Visa_Careers",             "1"),
+    ("Mastercard",      "mastercard",   "MCW_Careers",              "1"),
+    ("Walmart",         "walmart",      "WalmartExternalCareers",   "5"),
+    ("SAP",             "sap",          "SAP",                      "1"),
+    ("Adobe",           "adobe",        "ADBE_University_Hiring",   "1"),
+    ("PayPal",          "paypal",       "jobs",                     "1"),
+    ("Intuit",          "intuit",       "Intuit_Careers",           "1"),
+    ("Salesforce",      "salesforce",   "External_Career_Site",     "2"),
+    ("ServiceNow",      "servicenow",   "External",                 "1"),
+]
+
+# ================================================================ #
+#   ALERTS                                                         #
+# ================================================================ #
 
 def send_email(subject: str, body: str):
     if not EMAIL or not APP_PASSWORD:
-        print("⚠️  Email credentials missing — skipping email.")
+        print("  ⚠️  Email credentials missing — skipping.")
         return
     try:
         msg = MIMEMultipart("alternative")
@@ -109,21 +172,18 @@ def send_email(subject: str, body: str):
         msg["From"]    = EMAIL
         msg["To"]      = EMAIL
         msg.attach(MIMEText(body, "plain"))
-
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.ehlo()
             server.starttls()
             server.login(EMAIL, APP_PASSWORD)
             server.send_message(msg)
-
         print("  ✅ Email sent.")
     except Exception as e:
         print(f"  ❌ Email failed: {e}")
 
-
 def send_telegram(message: str):
     if not TELEGRAM_TOKEN or not CHAT_ID:
-        print("⚠️  Telegram credentials missing — skipping Telegram.")
+        print("  ⚠️  Telegram credentials missing — skipping.")
         return
     try:
         url  = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -139,7 +199,9 @@ def send_telegram(message: str):
     except Exception as e:
         print(f"  ❌ Telegram exception: {e}")
 
-# ================= STORAGE ================= #
+# ================================================================ #
+#   STORAGE                                                        #
+# ================================================================ #
 
 def load_seen() -> list:
     if os.path.exists(SEEN_FILE):
@@ -157,35 +219,30 @@ def save_seen(seen: list):
     except IOError as e:
         print(f"⚠️  Could not save seen file: {e}")
 
-# ================= GREENHOUSE API ================= #
+# ================================================================ #
+#   SCRAPERS                                                       #
+# ================================================================ #
 
 def scrape_greenhouse(company: str, board: str) -> list:
     jobs = []
     url  = f"https://boards-api.greenhouse.io/v1/boards/{board}/jobs?content=true"
-
-    res = safe_get(url)
+    res  = safe_get(url)
     if not res:
-        print(f"  ⚠️  {company} (Greenhouse): no response")
         return jobs
 
     try:
         data = res.json()
     except ValueError:
-        print(f"  ⚠️  {company} (Greenhouse): bad JSON")
         return jobs
 
     for job in data.get("jobs", []):
-        title   = job.get("title", "")
-        link    = job.get("absolute_url", "")
-        content = job.get("content", "")          # full description (HTML)
-        location = ""
-        if job.get("location"):
-            location = job["location"].get("name", "")
+        title    = job.get("title", "")
+        link     = job.get("absolute_url", "")
+        location = job.get("location", {}).get("name", "")
+        desc     = strip_html(job.get("content", ""))
 
-        # Flatten HTML description to plain text for keyword/exp matching
-        desc_text = BeautifulSoup(content, "html.parser").get_text(" ")
-
-        if keyword_match(title + " " + desc_text):
+        # ✅ Title must match — prevents false positives like Postman
+        if title_match(title) or desc_match(desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
@@ -194,43 +251,31 @@ def scrape_greenhouse(company: str, board: str) -> list:
                 "source":   "Greenhouse",
             })
 
-    print(f"  [{company}] Greenhouse → {len(jobs)} matched")
+    print(f"  [{company}] → {len(jobs)} matched")
     return jobs
 
-# ================= LEVER API ================= #
 
 def scrape_lever(company: str, board: str) -> list:
     jobs = []
     url  = f"https://api.lever.co/v0/postings/{board}?mode=json"
-
-    res = safe_get(url)
+    res  = safe_get(url)
     if not res:
-        print(f"  ⚠️  {company} (Lever): no response")
         return jobs
 
     try:
         data = res.json()
     except ValueError:
-        print(f"  ⚠️  {company} (Lever): bad JSON")
         return jobs
 
     for job in data:
         title    = job.get("text", "")
         link     = job.get("hostedUrl", "")
         location = job.get("categories", {}).get("location", "")
+        desc     = " ".join(
+            strip_html(i.get("content", "")) for i in job.get("lists", [])
+        ) + " " + strip_html(job.get("additional", ""))
 
-        # Combine all text for matching
-        lists    = job.get("lists", [])
-        desc_text = " ".join(
-            BeautifulSoup(item.get("content", ""), "html.parser").get_text(" ")
-            for item in lists
-        )
-        additional = BeautifulSoup(
-            job.get("additional", ""), "html.parser"
-        ).get_text(" ")
-        full_text = title + " " + desc_text + " " + additional
-
-        if keyword_match(full_text):
+        if title_match(title) or desc_match(desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
@@ -239,57 +284,129 @@ def scrape_lever(company: str, board: str) -> list:
                 "source":   "Lever",
             })
 
-    print(f"  [{company}] Lever → {len(jobs)} matched")
+    print(f"  [{company}] → {len(jobs)} matched")
     return jobs
 
-# ================= REMOTIVE (REMOTE .NET JOBS) ================= #
+
+def scrape_workday(company: str, tenant: str, board: str, version: str) -> list:
+    jobs       = []
+    search_url = (
+        f"https://{tenant}.wd{version}.myworkdayjobs.com"
+        f"/wday/cxs/{tenant}/{board}/jobs"
+    )
+    for keyword in [".net developer", "c# developer", "edi developer"]:
+        try:
+            res = requests.post(
+                search_url,
+                json={"appliedFacets": {}, "limit": 20, "offset": 0,
+                      "searchText": keyword},
+                headers={**HEADERS, "Content-Type": "application/json"},
+                timeout=15,
+            )
+            data = res.json()
+            for job in data.get("jobPostings", []):
+                title    = job.get("title", "")
+                path     = job.get("externalPath", "")
+                link     = (
+                    f"https://{tenant}.wd{version}.myworkdayjobs.com"
+                    f"/en-US/{board}{path}"
+                )
+                location = job.get("locationsText", "")
+                if title_match(title):
+                    jobs.append({
+                        "company":  company,
+                        "title":    title,
+                        "link":     link,
+                        "location": location,
+                        "source":   "Workday",
+                    })
+            time.sleep(0.5)
+        except Exception as e:
+            print(f"  ⚠️  {company} Workday error: {e}")
+
+    print(f"  [{company}] → {len(jobs)} matched")
+    return jobs
+
+
+def scrape_amazon() -> list:
+    jobs = []
+    for query in [".net developer", "c# developer", "edi developer"]:
+        res = safe_get(
+            "https://www.amazon.jobs/en/search.json",
+            headers=HEADERS,
+            params={"base_query": query, "loc_query": "India",
+                    "job_type": "Full-Time", "result_limit": 50},
+        )
+        if not res:
+            continue
+        try:
+            data = res.json()
+        except ValueError:
+            continue
+
+        for job in data.get("jobs", []):
+            title    = job.get("title", "")
+            job_id   = job.get("id_icims", "")
+            link     = f"https://www.amazon.jobs/en/jobs/{job_id}"
+            location = job.get("location", "")
+            if title_match(title):
+                jobs.append({
+                    "company":  "Amazon",
+                    "title":    title,
+                    "link":     link,
+                    "location": location,
+                    "source":   "Amazon Jobs",
+                })
+        time.sleep(1)
+
+    seen_links, unique = set(), []
+    for j in jobs:
+        if j["link"] not in seen_links:
+            seen_links.add(j["link"])
+            unique.append(j)
+
+    print(f"  [Amazon] → {len(unique)} matched")
+    return unique
+
 
 def scrape_remotive() -> list:
-    """Remotive has a free public JSON API — no scraping needed."""
     jobs = []
-    url  = "https://remotive.com/api/remote-jobs?category=software-dev&limit=100"
-
-    res = safe_get(url)
+    res  = safe_get(
+        "https://remotive.com/api/remote-jobs?category=software-dev&limit=100"
+    )
     if not res:
-        print("  ⚠️  Remotive: no response")
         return jobs
-
     try:
         data = res.json()
     except ValueError:
-        print("  ⚠️  Remotive: bad JSON")
         return jobs
 
     for job in data.get("jobs", []):
-        title       = job.get("title", "")
-        link        = job.get("url", "")
-        description = job.get("description", "")
-        company     = job.get("company_name", "Remote")
-        location    = job.get("candidate_required_location", "Remote")
+        title   = job.get("title", "")
+        link    = job.get("url", "")
+        company = job.get("company_name", "Remote")
+        loc     = job.get("candidate_required_location", "Remote")
+        desc    = strip_html(job.get("description", ""))
 
-        desc_text = BeautifulSoup(description, "html.parser").get_text(" ")
-
-        if keyword_match(title + " " + desc_text):
+        if title_match(title) or desc_match(desc):
             jobs.append({
                 "company":  company,
                 "title":    title,
                 "link":     link,
-                "location": location,
+                "location": loc,
                 "source":   "Remotive",
             })
 
     print(f"  [Remotive] → {len(jobs)} matched")
     return jobs
 
-# ================= ARBEITNOW (FREE JOB API) ================= #
 
 def scrape_arbeitnow() -> list:
-    """Arbeitnow offers a free job listing API usable without auth."""
     jobs = []
-    base = "https://www.arbeitnow.com/api/job-board-api"
-
-    for page in range(1, 4):            # check first 3 pages
-        res = safe_get(f"{base}?page={page}")
+    for page in range(1, 4):
+        res = safe_get(
+            f"https://www.arbeitnow.com/api/job-board-api?page={page}"
+        )
         if not res:
             break
         try:
@@ -302,65 +419,73 @@ def scrape_arbeitnow() -> list:
             break
 
         for job in items:
-            title       = job.get("title", "")
-            link        = job.get("url", "")
-            description = job.get("description", "")
-            company     = job.get("company_name", "")
-            location    = job.get("location", "")
+            title   = job.get("title", "")
+            link    = job.get("url", "")
+            company = job.get("company_name", "")
+            loc     = job.get("location", "")
+            desc    = strip_html(job.get("description", ""))
 
-            desc_text = BeautifulSoup(description, "html.parser").get_text(" ")
-
-            if keyword_match(title + " " + desc_text):
+            if title_match(title) or desc_match(desc):
                 jobs.append({
                     "company":  company,
                     "title":    title,
                     "link":     link,
-                    "location": location,
+                    "location": loc,
                     "source":   "Arbeitnow",
                 })
-
-        time.sleep(1)                   # be polite between pages
+        time.sleep(1)
 
     print(f"  [Arbeitnow] → {len(jobs)} matched")
     return jobs
 
-# ================= MAIN SCRAPER ================= #
+# ================================================================ #
+#   MAIN SCRAPER                                                   #
+# ================================================================ #
 
 def scrape_all() -> list:
     all_jobs = []
 
-    print("\n🔍 Scraping Greenhouse boards...")
+    print("\n🔍 Greenhouse boards...")
     for company, board in GREENHOUSE_COMPANIES:
         all_jobs += scrape_greenhouse(company, board)
         time.sleep(0.5)
 
-    print("\n🔍 Scraping Lever boards...")
+    print("\n🔍 Lever boards...")
     for company, board in LEVER_COMPANIES:
         all_jobs += scrape_lever(company, board)
         time.sleep(0.5)
 
-    print("\n🔍 Scraping Remotive API...")
+    print("\n🔍 Workday boards...")
+    for company, tenant, board, version in WORKDAY_COMPANIES:
+        all_jobs += scrape_workday(company, tenant, board, version)
+        time.sleep(1)
+
+    print("\n🔍 Amazon Jobs...")
+    all_jobs += scrape_amazon()
+
+    print("\n🔍 Remotive API...")
     all_jobs += scrape_remotive()
 
-    print("\n🔍 Scraping Arbeitnow API...")
+    print("\n🔍 Arbeitnow API...")
     all_jobs += scrape_arbeitnow()
 
-    # Deduplicate by link
-    seen_links = set()
-    unique = []
+    # Global dedup
+    seen_links, unique = set(), []
     for job in all_jobs:
-        if job["link"] not in seen_links:
+        if job["link"] and job["link"] not in seen_links:
             seen_links.add(job["link"])
             unique.append(job)
 
     print(f"\n📊 Total unique matched jobs: {len(unique)}")
     return unique
 
-# ================= MESSAGE BUILDER ================= #
+# ================================================================ #
+#   MESSAGE & MAIN                                                 #
+# ================================================================ #
 
 def build_message(job: dict) -> str:
     return (
-        f"🚀 New Job Opening!\n\n"
+        f"🚀 New Job Alert!\n\n"
         f"🏢 Company  : {job['company']}\n"
         f"💼 Role     : {job['title']}\n"
         f"📍 Location : {job.get('location') or 'Not specified'}\n"
@@ -368,14 +493,12 @@ def build_message(job: dict) -> str:
         f"📡 Source   : {job['source']}"
     )
 
-# ================= MAIN ================= #
 
 def main():
     print("=" * 55)
-    print("  Job Scraper Starting")
+    print("  Job Scraper — Starting")
     print("=" * 55)
 
-    # Debug: confirm secrets are loaded
     print(f"\n🔑 EMAIL        : {'✅ set' if EMAIL else '❌ missing'}")
     print(f"🔑 APP_PASSWORD : {'✅ set' if APP_PASSWORD else '❌ missing'}")
     print(f"🔑 TELEGRAM     : {'✅ set' if TELEGRAM_TOKEN else '❌ missing'}")
@@ -385,21 +508,22 @@ def main():
     jobs     = scrape_all()
     new_jobs = [j for j in jobs if j["link"] not in seen]
 
-    print(f"\n🆕 New jobs (not seen before): {len(new_jobs)}")
+    print(f"\n🆕 New jobs not seen before: {len(new_jobs)}")
 
     if not new_jobs:
-        print("✅ No new jobs this run.")
+        print("✅ No new jobs this run — nothing to send.")
     else:
         for job in new_jobs:
-            print(f"\n  → Sending alert for: {job['title']} @ {job['company']}")
+            print(f"\n  → Alerting: {job['title']} @ {job['company']}")
             message = build_message(job)
-            send_email(f"New Job: {job['title']} @ {job['company']} 🚀", message)
+            send_email(f"🚀 New Job: {job['title']} @ {job['company']}", message)
             send_telegram(message)
             seen.append(job["link"])
-            time.sleep(1)               # avoid rate-limits between notifications
+            time.sleep(1)
 
     save_seen(seen)
-    print("\n✅ Done. seen_jobs.json updated.")
+    print("\n✅ Done. seen_jobs.json saved.")
+
 
 if __name__ == "__main__":
     main()
