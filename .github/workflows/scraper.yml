@@ -2,46 +2,40 @@ name: Job Scraper
 
 on:
   schedule:
-    - cron: "0 * * * *"     # Every hour
-  workflow_dispatch:         # Allow manual trigger from GitHub UI
+    - cron: "0 * * * *"
+  workflow_dispatch:
 
 permissions:
-  contents: write            # Needed to commit seen_jobs.json back
+  contents: write
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
-
     steps:
-      # ── 1. Checkout repo (including seen_jobs.json if it exists) ──────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ── 2. Set up Python ──────────────────────────────────────────────────
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      # ── 3. Install dependencies ───────────────────────────────────────────
       - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4
+        run: pip install requests beautifulsoup4
 
-      # ── 4. Run the scraper (secrets injected as env vars) ─────────────────
       - name: Run job scraper
         env:
-          EMAIL:          ${{ secrets.EMAIL }}
-          APP_PASSWORD:   ${{ secrets.APP_PASSWORD }}
+          EMAIL: ${{ secrets.EMAIL }}
+          APP_PASSWORD: ${{ secrets.APP_PASSWORD }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT_ID:        ${{ secrets.CHAT_ID }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: python job_scraper.py
 
-      # ── 5. Commit updated seen_jobs.json so it persists across runs ───────
       - name: Save seen_jobs.json
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git config user.name  "github-actions[bot]"
+          git config user.name "github-actions[bot]"
+          git pull --rebase origin main
           git add seen_jobs.json
           git diff --staged --quiet || git commit -m "chore: update seen_jobs.json [skip ci]"
           git push
